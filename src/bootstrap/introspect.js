@@ -1,9 +1,16 @@
 var introspect= require("introspect")
 
-var MARK= 1
+var MARK= 1,
+  BOX= exports
+
+exports.moduleFreeze= function(){
+	BOX= {makeInjects: exports.makeInjects,
+	  getInjections: exports.getInjections,
+	  execService: exports.execService}
+}
 
 /**
-	Monkey-patched container.register which resolves introspection at the end
+	Monkey-patched container.register which resolves introspection after super.register
 */
 function _register(key, value, lifecycle){
 	var registerReturn= this._introspectRegisterBackup.apply(this,arguments),
@@ -18,14 +25,16 @@ exports._register= _register
 /**
 	monkey-patch a new container.register which will auto-inject arguments
 */
-function makeIntrospectService(){
-	this._introspectMakeInjects= makeInjects
-	this._introspectGetInjections= getInjections
-	this._introspectExecService= execService
-	this._introspectRegisterBackup= this.register
-	this.register= _register
-	return this 
+function makeIntrospectService(root){
+	root= root||this
+	root._introspectMakeInjects= BOX.makeInjects
+	root._introspectGetInjections= BOX.getInjections
+	root._introspectExecService= BOX.execService
+	root._introspectRegisterBackup= root.register
+	root.register= _register
+	return {}
 }
+exports.makeIntrospectService= makeIntrospectService
 
 /**
 	Find necessary injections.
@@ -33,10 +42,10 @@ function makeIntrospectService(){
 	@returns an array of all the parameters of the function, plus $injects it has declared
 */
 function makeInjects(fn){
-	var serviceArgs= introspect(value),
-	  existingArgs= registration.value.$inject
+	var serviceArgs= introspect(fn),
+	  existingArgs= fn.$inject
 	for(var i in serviceArgs){
-		serviceArgs[i]= exports._convertArg(serviceArgs[i])
+		serviceArgs[i]= BOX._convertArg(serviceArgs[i])
 	}
 	return serviceArgs.concat(existingArgs)
 }
@@ -47,9 +56,12 @@ exports.makeInjects= makeInjects
 	@param a1..a4 extra params to pass to container.get()
 */
 function getInjections(injects){
-	var injections= Array(injects.length)
+	var injections= Array(injects.length+arguments.length)
 	for(var i= 0; i< injects.length; ++i){
-		injections[i]= this.get(injects[i])
+		var injection= injects[i]
+		if(injection[0] != "_"){
+			injections[i]= this.get(injection)
+		}
 	}
 	return injections
 }
@@ -62,7 +74,7 @@ exports.getInjections= getInjections
 */
 function execService(fn,a1,a2,a3,a4){
 	var injects= this._introspectMakeInjects(fn),
-	  injections= this._introspectGetInjections(this,injects,a1,a2,a3,a4)
+	  injections= this._introspectGetInjections(injects,a1,a2,a3,a4)
 	return fn.apply(this,injections)
 }
 exports.execService= execService
@@ -73,16 +85,19 @@ exports.execService= execService
 	This transforms a _Factory or _f suffix into a !, and a _n suffix into a ? (nullable)
 */
 exports._convertArg= function(name){
-	var special= /^(.*?)(_(?:f|Factory|n|Nullable))+$/.exec(name)
+	if(name[0] == '_')
+		return null
+	var special= /^(.*?)(_(?:f|Factory|n|Nullable|e|Eventual))+$/.exec(name)
 	if(!special)
 		return name
-	var decoded= [special[1]],
-	  remains= name.substr(decoded.length)
-	if(remains.indexOf("_Factory") != -1 || remains.indexOf("_f" != -1))
-		decoded.push("!")
+	var decoded= special[1],
+	  remains= name.substr(decoded.length),
+	  postfix= ""
+	if(remains.indexOf("Factory") != -1 || remains.indexOf("_f" != -1))
+		postfix+= "!"
 	if(remains.indexOf("_Nullable") != -1 || remains.indexOf("_n" != -1))
-		decoded.push("?")
+		postfix+= "?"
 	if(remains.indexOf("_Eventual") != -1 || remains.indexOf("_e" != -1))
-		decoded.push("#")
-	return decoded.join("")
+		postfix+= "#"
+	return postfix? special[1]+postfix: special[1]
 }

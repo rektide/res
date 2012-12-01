@@ -1,12 +1,19 @@
 var glasses= require("glasses"),
-  pkginfoire("pkginfo")
+  pkginfoir= require("pkginfo")
 
-var MARK= 1
+var MARK= 1,
+  BOX= exports
+
+exports.moduleFreeze= function(){
+	BOX= {makeModuleAutoloader: exports.makeModuleAutoloader,
+	  _suffixes: exports._suffixes,
+	  _require: exports._require}
+}
 
 /**
 	Trim an asked for arg into a saved name
 */
-function _trimName(name,white,black,suffixes)
+function _trimName(name,white,black,suffixes){
 	var fullname= name
 	for(var i in suffixes){
 		var suffix= suffixes[i],
@@ -61,7 +68,7 @@ function _wrap(name,fn,white,black,suffixes,mod){
 /**
 	Perform a require() operation, but also check the module for res entries and register them against our container.
 */
-function _require= function(name){
+function _require(name){
 	var registry= this._moduleAutoloaderRegistry,
 	  mod= registry[name]
 	if(mod)
@@ -71,19 +78,21 @@ function _require= function(name){
 	  suffixes= this._moduleAutoloaderSuffixes,
 	  found= 0
 	mod= require(name)
-	if(typeof mod == "function"){
-		var pkginf= pkginfo(mod)
-		if(this._moduleAutoloaderWrap(pkginf.name,mod,white,black,suffixes,mod))
-			++found
+	if(!mod._introspectionAutoloadedMark){
+		mod._introspectionAutoloadedMark= true
+		if(typeof mod == "function"){
+			var pkginf= pkginfo(mod)
+			if(this._moduleAutoloaderWrap(pkginf.name,mod,white,black,suffixes,mod))
+				++found
+		}
+		var methods= glasses.methods(name)
+		METHODS: for(var i in methods){
+			var name= methods[i]
+			if(this.moduleAutoloaderWrap(name,mod[name],white,black,suffixes,mod))
+				++found
+		}
 	}
-	var methods= glasses.methods(name)
-	METHODS: for(var i in methods){
-		var name= methods[i]
-		if(this.moduleAutoloaderWrap(name,mod[name],white,black,suffixes,mod))
-			++found
-	}
-	if(found)
-		registry[name]= mod
+	registry[name]= mod
 	return mod
 }
 
@@ -93,22 +102,22 @@ function _require= function(name){
 var exports= module.exports= function(root){
 	root= root|| this
 	if(!root._moduleAutoloaderRequire){
-		root= exports.makeModuleAutoloader(root)
+		root= BOX.makeModuleAutoloader(root)
 	}
 	return root._moduleAutoloaderRequire
 }
-exports.suffixes= ["Factory","!","?"]
+exports._suffixes= ["Factory","!","?"]
 
 exports.makeModuleAutoloader= function(root){
 	root= root|| this
 	if(!(root.facilities && root.register && root.get && root.dispose && root.create)){
 		throw "No container passed in"
 	}
-	root._moduleAutoloaderRequire= _require.bind(root)
-	root._moduleAutoloaderWrap= _wrap
+	root._moduleAutoloaderRequire= BOX._require.bind(root)
+	root._moduleAutoloaderWrap= BOX._wrap
 	root._moduleAutoloaderBlacklist= glasses.methods({}) 
 	root._moduleAutoloaderWhitelist= null
-	root._moduleAutoloaderSuffixes= exports.suffixes
+	root._moduleAutoloaderSuffixes= BOX._suffixes
 	root._moduleAutoloaderMakeTest= /^make(.*)Service$/
 	root._moduleAutoloaderRegistry= {}
 	root.register("moduleAutoloader",root._moduleAutoloaderRequire,"singleton")

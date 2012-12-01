@@ -1,3 +1,3 @@
-### Res ###
+# Res #
 
-Res is a context-oriented dependency processing framework for JavaScript.
+Res is a context-oriented dependency processor for JavaScript.
