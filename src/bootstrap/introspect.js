@@ -59,7 +59,7 @@ function getInjections(injects){
 	var injections= Array(injects.length+arguments.length)
 	for(var i= 0; i< injects.length; ++i){
 		var injection= injects[i]
-		if(injection[0] != "_"){
+		if(injection && injection[0] != "_"){
 			injections[i]= this.get(injection)
 		}
 	}
@@ -72,9 +72,10 @@ exports.getInjections= getInjections
 	@param fn a service function to execute
 	@param a1..a4 extra params to pass to container.get()
 */
-function execService(fn,a1,a2,a3,a4){
+function execService(fn){
 	var injects= this._introspectMakeInjects(fn),
-	  injections= this._introspectGetInjections(injects,a1,a2,a3,a4)
+	  injections= this._introspectGetInjections(injects)
+	injections.push(Array.prototype.splice(arguments,1))
 	return fn.apply(this,injections)
 }
 exports.execService= execService
